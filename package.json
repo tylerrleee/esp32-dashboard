@@ -1,0 +1,13 @@
+{
+  "name": "esp32-firebase-dashboard",
+  "version": "1.0.0",
+  "description": "Web dashboard for ESP32 via Firebase Realtime Database",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js"
+  },
+  "dependencies": {
+    "bootstrap": "^5.3.8",
+    "express": "^4.21.0"
+  }
+}

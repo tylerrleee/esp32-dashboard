@@ -1,0 +1,145 @@
+#include <WiFi.h>
+#include <Firebase_ESP_Client.h>
+#include <ESP32Servo.h>
+
+#include "addons/TokenHelper.h"
+#include "addons/RTDBHelper.h"
+
+
+#define LED1_PIN 14
+#define LED2_PIN 12
+#define LDR_PIN 36
+#define SERVO_PIN 18
+#define PWM_CHANNEL 0
+
+#define SWITCH_PIN 13
+
+
+FirebaseData fbdo;
+FirebaseAuth auth;
+FirebaseConfig config;
+
+Servo myServo;
+
+unsigned long sendDataPrevMillis = 0;
+bool signupOK = false;
+int ldrData = 0;
+float voltage = 0.0;
+int servoAngle = 0;
+int sweepDirection = 1;
+int pwmValue = 0;
+bool ledStatus = false;
+bool switchState = false;
+
+
+void setup() {
+  Serial.begin(115200);
+
+  myServo.attach(SERVO_PIN);
+  myServo.write(0);
+
+  pinMode(LED2_PIN, OUTPUT);
+  ledcAttach(LED1_PIN, 5000, 8);
+
+  pinMode(SWITCH_PIN, INPUT_PULLUP);
+
+  WiFi.begin(WIFI_SSID, WIFI_PASSWORD);
+  Serial.print("Connecting to Wi-Fi");
+  while (WiFi.status() != WL_CONNECTED) {
+    Serial.print("."); delay(300);
+  }
+  Serial.println();
+  Serial.print("Connected with IP: ");
+  Serial.println(WiFi.localIP());
+  Serial.println();
+
+  config.api_key = API_KEY;
+  config.database_url = DATABASE_URL;
+
+  if (Firebase.signUp(&config, &auth, "", "")) {
+    Serial.println("signUp OK");
+    signupOK = true;
+  } else {
+    Serial.printf("%s\n", config.signer.signupError.message.c_str());
+  }
+  config.token_status_callback = tokenStatusCallback;
+  Firebase.begin(&config, &auth);
+  Firebase.reconnectWiFi(true);
+}
+
+void loop() {
+  if (Firebase.ready() && signupOK && (millis() - sendDataPrevMillis > 5000 || sendDataPrevMillis == 0)) {
+    sendDataPrevMillis = millis();
+
+    // ------------------ Sweep servo
+    servoAngle += (30 * sweepDirection);
+    if (servoAngle >= 180) { servoAngle = 180; sweepDirection = -1; }
+    if (servoAngle <= 0)   { servoAngle = 0;   sweepDirection = 1;  }
+    myServo.write(servoAngle);
+    Serial.printf("\nServo angle: %d\n", servoAngle);
+
+    // ------------------ STORE sensor data to RTDB
+    ldrData = analogRead(LDR_PIN);
+    voltage = (float)analogReadMilliVolts(LDR_PIN) / 1000;
+
+    if (Firebase.RTDB.setInt(&fbdo, "Sensor/ldr_data", ldrData)) {
+      Serial.print(ldrData);
+      Serial.print(" - successfully saved to: " + fbdo.dataPath());
+      Serial.println(" (" + fbdo.dataType() + ")");
+    } else {
+      Serial.println("FAILED: " + fbdo.errorReason());
+    }
+
+    if (Firebase.RTDB.setFloat(&fbdo, "Sensor/voltage", voltage)) {
+      Serial.print(voltage);
+      Serial.print(" - successfully saved to: " + fbdo.dataPath());
+      Serial.println(" (" + fbdo.dataType() + ")");
+    } else {
+      Serial.println("FAILED: " + fbdo.errorReason());
+    }
+
+    // ------------------ STORE servo angle to RTDB
+    if (Firebase.RTDB.setInt(&fbdo, "Servo/angle", servoAngle)) {
+      Serial.print(servoAngle);
+      Serial.print(" - successfully saved to: " + fbdo.dataPath());
+      Serial.println(" (" + fbdo.dataType() + ")");
+    } else {
+      Serial.println("FAILED: " + fbdo.errorReason());
+    }
+
+
+    // ------------------ READ data from RTDB to control devices
+    if (Firebase.RTDB.getInt(&fbdo, "/LED/analog")) {
+      if (fbdo.dataType() == "int") {
+        pwmValue = fbdo.intData();
+        Serial.println("Successful READ from " + fbdo.dataPath() + ": " + String(pwmValue) + " (" + fbdo.dataType() + ")");
+        ledcWrite(LED1_PIN, pwmValue);
+      }
+    } else {
+      Serial.println("FAILED: " + fbdo.errorReason());
+    }
+
+    if (Firebase.RTDB.getBool(&fbdo, "/LED/digital")) {
+      if (fbdo.dataType() == "boolean") {
+        ledStatus = fbdo.boolData();
+        Serial.println("Successful READ from " + fbdo.dataPath() + ": " + String(ledStatus) + " (" + fbdo.dataType() + ")");
+        digitalWrite(LED2_PIN, ledStatus);
+      }
+    } else {
+      Serial.println("FAILED: " + fbdo.errorReason());
+    }
+  }
+  
+  bool currentSwitch = !digitalRead(SWITCH_PIN);
+  if (currentSwitch != switchState) {
+    switchState = currentSwitch;
+    if (Firebase.RTDB.setBool(&fbdo, "Sensor/switch", switchState)) {
+      Serial.print(switchState ? "true" : "false");
+      Serial.print(" - successfully saved to: " + fbdo.dataPath());
+      Serial.println(" (" + fbdo.dataType() + ")");
+    } else {
+      Serial.println("FAILED: " + fbdo.errorReason());
+    }
+  }
+
+}
