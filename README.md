@@ -58,7 +58,7 @@ npm install
 npm start
 ```
 
-The dashboard runs at `http://localhost:3000`.
+The dashboard runs at `http://localhost:3000`. Or whatever
 
 ### ESP32 Firmware
 

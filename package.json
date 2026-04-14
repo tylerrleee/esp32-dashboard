@@ -4,10 +4,14 @@
   "description": "Web dashboard for ESP32 via Firebase Realtime Database",
   "main": "server.js",
   "scripts": {
+    "dev": "nodemon server.js",
     "start": "node server.js"
   },
   "dependencies": {
     "bootstrap": "^5.3.8",
-    "express": "^4.21.0"
+    "dotenv": "^17.4.2",
+    "express": "^4.21.0",
+    "nodemon": "^3.1.14",
+    "ollama": "^0.6.3"
   }
 }
