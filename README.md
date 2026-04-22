@@ -1,47 +1,73 @@
-# ESP32 Firebase Realtime Dashboard
+# KatEye MPU6050 Collect
 
-A real-time IoT dashboard that connects an ESP32 microcontroller to a web interface through Firebase Realtime Database. Monitor sensors and control actuators from your browser — changes sync instantly in both directions.
+A labeled IMU data collection tool for driving attitude classification. An ESP32 + MPU6050 records 10-second sessions of 6-axis accelerometer/gyroscope data, triggered from a web dashboard. Recordings are stored in Firestore and visualized with Chart.js for building a driving events CNN dataset.
 
 ## Dashboard
 
-![ESP32 Dashboard](media/esp32_dashboard.jpg)
+![KatEye Dashboard](media/DATACOLLECTDASH.jpg)
 
-## Circuit
+## Hardware
 
-![ESP32 Circuit](media/esp32_firebase.jpeg)
+![ESP32 + MPU6050](media/DATACOLLECTPIC.jpeg)
 
 ## Features
 
-- **LDR Light Sensor** — reads analog light level (0–4095) and voltage, displayed as an animated gauge
-- **Physical Switch** — monitors a hardware button (Pin 13) with real-time ON/OFF indicator
-- **Digital LED Control** — toggle an LED (Pin 12) on/off from the dashboard
-- **PWM LED Brightness** — adjust LED brightness (Pin 14) with a 0–255 slider
-- **Servo Motor** — control servo angle (0°–180°) from the dashboard; ESP32 also runs an auto-sweep
+- **Calibration display** — shows accelerometer and gyroscope bias values (ax, ay, az, gx, gy, gz)
+- **9 labeled collection buttons** — Accelerate, Aggressive Accelerate, Aggressive Brake, Aggressive Left, Aggressive Right, Brake, Idling, Left, Right
+- **Real-time device status** — countdown timer, recording progress (0–560 samples), error display
+- **Recordings list** — browse all saved recordings with delete support
+- **Chart.js dual-axis visualization** — plots accel (m/s²) and gyro (rad/s) on separate Y-axes over time
+- **Live Firebase sync** — RTDB listeners update the dashboard as the ESP32 records
 
-## Firebase RTDB Structure
+## Data Architecture
+
+### Firebase Realtime Database (device commands/status)
 
 ```
-├── Sensor/
-│   ├── ldr_data    (int)     ← ESP32 writes
-│   ├── voltage     (float)   ← ESP32 writes
-│   └── switch      (bool)    ← ESP32 writes
-├── LED/
-│   ├── digital     (bool)    ← Dashboard writes, ESP32 reads
-│   └── analog      (int)     ← Dashboard writes, ESP32 reads
-└── Servo/
-    └── angle       (int)     ← Both read/write
+datacollect/devices/kateye-collector-01/
+├── command/
+│   ├── trigger       (bool)    ← Dashboard writes
+│   ├── label         (int)     ← Dashboard writes
+│   └── label_name    (string)  ← Dashboard writes
+├── status            (string)  ← ESP32 writes (idle/countdown/recording/uploading/done/error)
+├── countdown_remaining (int)   ← ESP32 writes
+├── progress          (int)     ← ESP32 writes (0–560)
+├── last_error        (string)  ← ESP32 writes
+└── last_recording_id (string)  ← ESP32 writes
+```
+
+### Firestore (recording storage)
+
+Each document in the `recordings` collection:
+
+```
+recordings/{docId}
+├── label           (int)       — class index (0–8)
+├── label_name      (string)    — e.g. "Accelerate", "Aggressive Left"
+├── sample_rate_hz  (number)    — 56
+├── num_samples     (number)    — 560
+├── calibration/
+│   ├── bias_ax, bias_ay, bias_az
+│   └── bias_gx, bias_gy, bias_gz
+└── data/
+    ├── accel_x[]   (float array, m/s²)
+    ├── accel_y[]
+    ├── accel_z[]
+    ├── gyro_x[]    (float array, rad/s)
+    ├── gyro_y[]
+    └── gyro_z[]
 ```
 
 ## Tech Stack
 
-| Layer     | Technology                          |
-|-----------|-------------------------------------|
-| Hardware  | ESP32, LDR, LEDs, Servo, Push button |
-| Firmware  | Arduino (WiFi, Firebase_ESP_Client, ESP32Servo) |
-| Backend   | Firebase Realtime Database          |
-| Frontend  | HTML/CSS/JS, Firebase JS SDK 10     |
-| Server    | Node.js + Express (static hosting)  |
-| Styling   | Bootstrap 5, custom CSS             |
+| Layer     | Technology                                      |
+|-----------|-------------------------------------------------|
+| Hardware  | ESP32 + MPU6050 6-axis IMU                      |
+| Firmware  | Arduino (WiFi, HTTPClient, ArduinoJson, I2Cdev) |
+| Database  | Firebase Realtime Database + Firestore           |
+| Backend   | Node.js + Express (Firestore REST API proxy)     |
+| Frontend  | ES modules, Firebase JS SDK 10, Chart.js         |
+| Styling   | Bootstrap 5, custom CSS                          |
 
 ## Getting Started
 
@@ -49,38 +75,53 @@ A real-time IoT dashboard that connects an ESP32 microcontroller to a web interf
 
 - Node.js
 - Arduino IDE with ESP32 board support
-- A Firebase project with Realtime Database enabled
+- A Firebase project with **Realtime Database** and **Firestore** enabled
 
-### Web Dashboard
+### Environment
+
+Copy `.env.template` to `.env` and fill in your Firebase credentials:
+
+```bash
+cp .env.template .env
+```
+
+```
+FIREBASE_API_KEY=your-api-key
+AUTH_DOMAIN=your-project.firebaseapp.com
+DATABASE_URL=https://your-project-default-rtdb.firebaseio.com
+PROJECT_ID=your-project-id
+STORAGE_BUCKET=your-project.appspot.com
+MESSAGE_SENDER_ID=123456789
+APP_ID=1:123456789:web:abc123
+PORT=3000
+```
+
+### Run the Dashboard
 
 ```bash
 npm install
 npm start
 ```
 
-The dashboard runs at `http://localhost:3000`. Or whatever
+The dashboard runs at `http://localhost:3000`.
 
-### ESP32 Firmware
+### Upload Firmware
 
-1. Open `arduino/realtimeDB.txt` in Arduino IDE
-2. Install the required libraries: **Firebase ESP Client**, **ESP32Servo**
-3. Update the WiFi credentials and Firebase config in the sketch
+1. Open `arduino/data_collect_kateye.ino` in Arduino IDE
+2. Install required libraries: **ArduinoJson**, **I2Cdev**, **MPU6050**
+3. Edit `arduino/data_collector_config.h` with your WiFi credentials and Firebase config
 4. Upload to your ESP32
 
-### Firebase Setup
+## Arduino Firmware
 
-1. Create a Firebase project at [console.firebase.google.com](https://console.firebase.google.com)
-2. Enable Realtime Database
-3. Copy your API key and database URL into both:
-   - `arduino/realtimeDB.txt` (ESP32 firmware)
-   - `public/app.js` (web dashboard)
+- **`arduino/data_collect_kateye.ino`** — main firmware: state machine (IDLE → COUNTDOWN → RECORDING → UPLOADING → IDLE), MPU6050 calibration, hardware-timer-driven sampling at 56 Hz, Firestore upload via REST API
+- **`arduino/data_collector_config.h`** — WiFi credentials, Firebase keys, sampling parameters (rate, duration, channels), pin assignments, mounting orientation
 
-## Pin Configuration
+## API Endpoints
 
-| Component      | ESP32 Pin |
-|----------------|-----------|
-| LED (PWM)      | GPIO 14   |
-| LED (Digital)  | GPIO 12   |
-| LDR Sensor     | GPIO 36   |
-| Servo Motor    | GPIO 18   |
-| Push Button    | GPIO 13   |
+| Method   | Route                      | Description                                    |
+|----------|----------------------------|------------------------------------------------|
+| `GET`    | `/api/config`              | Returns Firebase config from server environment |
+| `GET`    | `/api/recordings`          | Lists all recordings (id, label, label_name)    |
+| `GET`    | `/api/recordings/:docId`   | Returns full recording data (samples, calibration) |
+| `DELETE` | `/api/recordings/:docId`   | Deletes a recording from Firestore              |
