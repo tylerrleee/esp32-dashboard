@@ -5,18 +5,17 @@ async function init() {
   const { db } = await initFirebase();
 
   // Get DOM elements
-  const ldrValueEl = document.getElementById('ldr-value');
-  const voltageValueEl = document.getElementById('voltage-value');
-  const gaugeFill = document.getElementById('gauge-fill');
-  const switchIndicator = document.getElementById('switch-indicator');
-  const switchLabel = document.getElementById('switch-label');
-  const ledDigitalToggle = document.getElementById('led-digital-toggle');
-  const ledDigitalLabel = document.getElementById('led-digital-label');
-  const ledAnalogSlider = document.getElementById('led-analog-slider');
-  const ledAnalogValue = document.getElementById('led-analog-value');
-  const servoSlider = document.getElementById('servo-slider');
-  const servoValue = document.getElementById('servo-value');
-  const servoCurrent = document.getElementById('servo-current');
+  const accelX = document.getElementById('accel-x');
+  const accelY = document.getElementById('accel-y');
+  const accelZ = document.getElementById('accel-z');
+  const gyroX = document.getElementById('gyro-x');
+  const gyroY = document.getElementById('gyro-y');
+  const gyroZ = document.getElementById('gyro-z');
+  const countdownValue = document.getElementById('countdown-value');
+  const progressBar = document.getElementById('progress-bar');
+  const progressValue = document.getElementById('progress-value');
+  const errorValue = document.getElementById('error-value');
+  
   const connectionStatus = document.getElementById('connection-status');
 
   // Connection status
@@ -32,107 +31,183 @@ async function init() {
     console.error('Connection listener error:', err);
   });
 
-  // Gauge helper
-  function updateGauge(value) {
-    const pct = Math.min(value / 4095, 1);
-    const arcLength = 251;
-    const offset = arcLength * (1 - pct);
-    gaugeFill.style.strokeDasharray = arcLength;
-    gaugeFill.style.strokeDashoffset = offset;
+  // Helper to format numbers
+  function fmt(val) {
+    return typeof val === 'number' ? val.toFixed(2) : val;
   }
 
-  // Read LDR
-  onValue(ref(db, 'Sensor/ldr_data'), (snap) => {
+  // Read Accelerometer
+  onValue(ref(db, 'Sensor/accel'), (snap) => {
     const val = snap.val();
     if (val !== null) {
-      ldrValueEl.textContent = val;
-      updateGauge(val);
+      accelX.textContent = fmt(val.x);
+      accelY.textContent = fmt(val.y);
+      accelZ.textContent = fmt(val.z);
     }
   }, (err) => {
-    console.error('LDR listener error:', err);
+    console.error('Accel listener error:', err);
   });
 
-  // Read Voltage
-  onValue(ref(db, 'Sensor/voltage'), (snap) => {
+  // Read Gyroscope
+  onValue(ref(db, 'Sensor/gyro'), (snap) => {
     const val = snap.val();
     if (val !== null) {
-      voltageValueEl.textContent = typeof val === 'number' ? val.toFixed(2) : val;
+      gyroX.textContent = fmt(val.x);
+      gyroY.textContent = fmt(val.y);
+      gyroZ.textContent = fmt(val.z);
     }
   }, (err) => {
-    console.error('Voltage listener error:', err);
+    console.error('Gyro listener error:', err);
   });
 
-  // Read switch
-  onValue(ref(db, 'Sensor/switch'), (snap) => {
+  // Recording chart
+  const graphCard = document.getElementById('graph-card');
+  const graphMeta = document.getElementById('graph-meta');
+  const chartCanvas = document.getElementById('recording-chart');
+  let recordingChart = null;
+  let lastRecordingId = null;
+
+  function renderRecordingChart(data) {
+    graphCard.style.display = '';
+    graphMeta.textContent = `Label: ${data.label_name} (${data.label})`;
+
+    if (recordingChart) {
+      recordingChart.destroy();
+    }
+
+    const numSamples = data.num_samples || 560;
+    const sampleRate = data.sample_rate_hz || 56;
+    const labels = Array.from({ length: numSamples }, (_, i) => (i / sampleRate).toFixed(3));
+
+    const channels = [
+      { key: 'accel_x', label: 'Accel X', color: '#e74c3c', yAxis: 'yAccel' },
+      { key: 'accel_y', label: 'Accel Y', color: '#3498db', yAxis: 'yAccel' },
+      { key: 'accel_z', label: 'Accel Z', color: '#2ecc71', yAxis: 'yAccel' },
+      { key: 'gyro_x', label: 'Gyro X', color: '#e67e22', yAxis: 'yGyro' },
+      { key: 'gyro_y', label: 'Gyro Y', color: '#9b59b6', yAxis: 'yGyro' },
+      { key: 'gyro_z', label: 'Gyro Z', color: '#1abc9c', yAxis: 'yGyro' },
+    ];
+
+    const datasets = channels.map((ch) => ({
+      label: ch.label,
+      data: data.data[ch.key] || [],
+      borderColor: ch.color,
+      borderWidth: 1.5,
+      pointRadius: 0,
+      yAxisID: ch.yAxis,
+    }));
+
+    recordingChart = new Chart(chartCanvas, {
+      type: 'line',
+      data: { labels, datasets },
+      options: {
+        animation: false,
+        responsive: true,
+        maintainAspectRatio: false,
+        interaction: { mode: 'index', intersect: false },
+        scales: {
+          x: {
+            title: { display: true, text: 'Time (s)' },
+            ticks: { maxTicksLimit: 20 },
+          },
+          yAccel: {
+            type: 'linear',
+            position: 'left',
+            title: { display: true, text: 'm/s\u00B2' },
+          },
+          yGyro: {
+            type: 'linear',
+            position: 'right',
+            title: { display: true, text: 'rad/s' },
+            grid: { drawOnChartArea: false },
+          },
+        },
+      },
+    });
+  }
+
+  // Data collection
+  const DEVICE_ID = 'kateye-collector-01';
+  const deviceRef = `datacollect/devices/${DEVICE_ID}`;
+  const collectStatus = document.getElementById('collect-status');
+  const btnGrid = document.querySelector('.btn-grid');
+
+  // Listen for device status changes
+  onValue(ref(db, deviceRef), (snap) => {
     const val = snap.val();
-    if (val !== null) {
-      const isOn = Boolean(val);
-      switchIndicator.className = 'switch-indicator ' + (isOn ? 'on' : 'off');
-      switchLabel.textContent = isOn ? 'ON' : 'OFF';
+    if (!val) return;
+
+    const status = val.status || 'idle';
+    const countdown = val.countdown_remaining || 0;
+    const progress = val.progress || 0;
+    const error = val.last_error || '';
+
+    // Update collect-status banner
+    if (status === 'countdown') {
+      collectStatus.textContent = `Countdown: ${countdown}`;
+      collectStatus.className = 'collect-status countdown';
+    } else if (status === 'recording') {
+      collectStatus.textContent = `Recording: ${progress}/560`;
+      collectStatus.className = 'collect-status recording';
+    } else if (status === 'uploading') {
+      collectStatus.textContent = 'Uploading...';
+      collectStatus.className = 'collect-status uploading';
+    } else if (status === 'done') {
+      collectStatus.textContent = 'Done!';
+      collectStatus.className = 'collect-status done';
+
+      // Fetch and display the recording graph
+      const recId = val.last_recording_id;
+      if (recId && recId !== lastRecordingId) {
+        lastRecordingId = recId;
+        fetch(`/api/recordings/${recId}`)
+          .then((r) => r.json())
+          .then((data) => {
+            if (data && data.data) renderRecordingChart(data);
+          })
+          .catch((err) => console.error('Recording fetch error:', err));
+      }
+    } else if (status === 'error') {
+      collectStatus.textContent = `Error: ${error}`;
+      collectStatus.className = 'collect-status error';
+    } else {
+      collectStatus.textContent = 'Idle';
+      collectStatus.className = 'collect-status';
     }
+
+    // Update Device Status card
+    countdownValue.textContent = countdown > 0 ? countdown : '--';
+    progressValue.textContent = `${progress} / 560`;
+    const pct = Math.min(progress / 560 * 100, 100);
+    progressBar.style.width = `${pct}%`;
+    errorValue.textContent = error || '--';
+
+    // Disable buttons when not idle
+    const busy = status !== 'idle' && status !== 'done' && status !== 'error';
+    btnGrid.querySelectorAll('button').forEach((btn) => {
+      btn.disabled = busy;
+    });
   }, (err) => {
-    console.error('Switch listener error:', err);
+    console.error('Device status listener error:', err);
   });
 
-  // Read servo angle
-  onValue(ref(db, 'Servo/angle'), (snap) => {
-    const val = snap.val();
-    if (val !== null) {
-      servoCurrent.textContent = val;
-    }
-  }, (err) => {
-    console.error('Servo listener error:', err);
+  // Button click → send command to RTDB
+  btnGrid.addEventListener('click', (e) => {
+    const btn = e.target.closest('button');
+    if (!btn || btn.disabled) return;
+
+    const label = parseInt(btn.dataset.label, 10);
+    const labelName = btn.dataset.name;
+
+    set(ref(db, `${deviceRef}/command`), {
+      trigger: true,
+      label: label,
+      label_name: labelName,
+    }).catch((err) => {
+      console.error('Command set error:', err);
+    });
   });
 
-  // Sync controls from RTDB
-  let suppressDigital = false;
-  let suppressAnalog = false;
-
-  onValue(ref(db, 'LED/digital'), (snap) => {
-    const val = snap.val();
-    if (val !== null && !suppressDigital) {
-      ledDigitalToggle.checked = Boolean(val);
-      ledDigitalLabel.textContent = val ? 'ON' : 'OFF';
-    }
-  }, (err) => {
-    console.error('LED digital listener error:', err);
-  });
-
-  onValue(ref(db, 'LED/analog'), (snap) => {
-    const val = snap.val();
-    if (val !== null && !suppressAnalog) {
-      ledAnalogSlider.value = val;
-      ledAnalogValue.textContent = val;
-    }
-  }, (err) => {
-    console.error('LED analog listener error:', err);
-  });
-
-  // Controls — write to RTDB
-  ledDigitalToggle.addEventListener('change', () => {
-    const val = ledDigitalToggle.checked;
-    ledDigitalLabel.textContent = val ? 'ON' : 'OFF';
-    suppressDigital = true;
-    set(ref(db, 'LED/digital'), val)
-      .then(() => { suppressDigital = false; })
-      .catch((err) => { suppressDigital = false; console.error('LED digital set error:', err); });
-  });
-
-  ledAnalogSlider.addEventListener('input', () => {
-    const val = parseInt(ledAnalogSlider.value, 10);
-    ledAnalogValue.textContent = val;
-    suppressAnalog = true;
-    set(ref(db, 'LED/analog'), val)
-      .then(() => { suppressAnalog = false; })
-      .catch((err) => { suppressAnalog = false; console.error('LED analog set error:', err); });
-  });
-
-  servoSlider.addEventListener('input', () => {
-    const val = parseInt(servoSlider.value, 10);
-    servoValue.textContent = val + '°';
-    set(ref(db, 'Servo/angle'), val)
-      .catch((err) => { console.error('Servo set error:', err); });
-  });
 }
 
 init().catch((err) => {

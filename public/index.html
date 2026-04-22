@@ -6,6 +6,7 @@
   <title>ESP32 Dashboard</title>
   <link rel="stylesheet" href="styles.css">
   <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.8/dist/css/bootstrap.min.css" rel="stylesheet" integrity="sha384-sRIl4kxILFvY47J16cr9ZwB07vP4J8+LH7qKQnuqkuIAvNWLzeN8tE5YBujZqJLB" crossorigin="anonymous">
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4/dist/chart.umd.min.js"></script>
 </head>
 <body>
   <header>
@@ -15,60 +16,65 @@
 
   <main class="dashboard">
     <div class="card">
-      <h2>Light Sensor (LDR)</h2>
-      <div class="gauge-container">
-        <svg class="gauge" viewBox="0 0 200 120">
-          <path class="gauge-bg" d="M20,100 A80,80 0 0,1 180,100" />
-          <path id="gauge-fill" class="gauge-fill" d="M20,100 A80,80 0 0,1 180,100" />
-        </svg>
-        <div class="gauge-value" id="ldr-value">--</div>
-      </div>
-      <div class="sensor-detail">
-        <span>Voltage: <strong id="voltage-value">--</strong> mV</span>
-      </div>
-    </div>
-
-    <div class="card">
-      <h2>Physical Switch</h2>
-      <div class="switch-indicator-container">
-        <div id="switch-indicator" class="switch-indicator off">
-          <span id="switch-label">OFF</span>
+      <h2>IMU Sensor</h2>
+      <div class="imu-data">
+        <div class="imu-section">
+          <h3>Accelerometer</h3>
+          <div class="imu-row"><span class="imu-axis">X</span> <strong id="accel-x">--</strong></div>
+          <div class="imu-row"><span class="imu-axis">Y</span> <strong id="accel-y">--</strong></div>
+          <div class="imu-row"><span class="imu-axis">Z</span> <strong id="accel-z">--</strong></div>
+        </div>
+        <div class="imu-section">
+          <h3>Gyroscope</h3>
+          <div class="imu-row"><span class="imu-axis">X</span> <strong id="gyro-x">--</strong></div>
+          <div class="imu-row"><span class="imu-axis">Y</span> <strong id="gyro-y">--</strong></div>
+          <div class="imu-row"><span class="imu-axis">Z</span> <strong id="gyro-z">--</strong></div>
         </div>
       </div>
     </div>
 
     <div class="card">
-      <h2>LED Digital (Pin 12)</h2>
-      <div class="toggle-container">
-        <label class="toggle">
-          <input type="checkbox" id="led-digital-toggle">
-          <span class="toggle-slider"></span>
-        </label>
-        <span id="led-digital-label" class="control-label">OFF</span>
+      <h2>Data Collection</h2>
+      <div id="collect-status" class="collect-status">Idle</div>
+      <div class="btn-grid">
+        <button data-label="0" data-name="Accelerate">Accelerate</button>
+        <button data-label="7" data-name="Left">Left</button>
+        <button data-label="8" data-name="Right">Right</button>
+        <button data-label="5" data-name="Brake">Brake</button>
+        <button data-label="1" data-name="Aggressive Accelerate">Agg Accel</button>
+        <button data-label="3" data-name="Aggressive Left">Agg Left</button>
+        <button data-label="4" data-name="Aggressive Right">Agg Right</button>
+        <button data-label="2" data-name="Aggressive Brake">Agg Brake</button>
+        <button data-label="6" data-name="Idling">Idling</button>
       </div>
     </div>
 
     <div class="card">
-      <h2>LED Brightness (Pin 14)</h2>
-      <div class="slider-container">
-        <input type="range" id="led-analog-slider" min="0" max="255" value="0">
-        <span id="led-analog-value" class="slider-value">0</span>
-      </div>
-      <div class="slider-labels">
-        <span>0</span><span>255</span>
+      <h2>Device Status</h2>
+      <div class="device-stats">
+        <div class="stat-item">
+          <span class="stat-label">Countdown</span>
+          <span id="countdown-value" class="stat-value">--</span>
+        </div>
+        <div class="stat-item">
+          <span class="stat-label">Progress</span>
+          <div class="progress-bar-container">
+            <div id="progress-bar" class="progress-bar"></div>
+          </div>
+          <span id="progress-value" class="stat-value">0 / 560</span>
+        </div>
+        <div class="stat-item">
+          <span class="stat-label">Last Error</span>
+          <span id="error-value" class="stat-value error-text">--</span>
+        </div>
       </div>
     </div>
 
-    <div class="card">
-      <h2>Servo Motor</h2>
-      <div class="slider-container">
-        <input type="range" id="servo-slider" min="0" max="180" value="90">
-        <span id="servo-value" class="slider-value">90°</span>
-      </div>
-      <div class="slider-labels">
-        <span>0°</span><span>180°</span>
-      </div>
 
+    <div class="card card-wide" id="graph-card" style="display:none;">
+      <h2>Recording Data</h2>
+      <div id="graph-meta" class="graph-meta"></div>
+      <canvas id="recording-chart"></canvas>
     </div>
   </main>
 
