@@ -20,6 +20,26 @@ app.get('/api/config', (req, res) => {
   });
 });
 
+// Delete a recording document from Firestore
+app.delete('/api/recordings/:docId', async (req, res) => {
+  const projectId = process.env.PROJECT_ID;
+  if (!projectId) return res.status(500).json({ error: 'PROJECT_ID not configured' });
+
+  const { docId } = req.params;
+  const url = `https://firestore.googleapis.com/v1/projects/${projectId}/databases/(default)/documents/recordings/${docId}`;
+
+  try {
+    const response = await fetch(url, { method: 'DELETE' });
+    if (!response.ok) {
+      return res.status(response.status).json({ error: `Firestore returned ${response.status}` });
+    }
+    res.json({ ok: true });
+  } catch (err) {
+    console.error('Firestore delete error:', err);
+    res.status(500).json({ error: 'Failed to delete recording' });
+  }
+});
+
 // Firestore proxy — fetch a recording document and return simplified JSON
 app.get('/api/recordings/:docId', async (req, res) => {
   const projectId = process.env.PROJECT_ID;
@@ -61,12 +81,46 @@ app.get('/api/recordings/:docId', async (req, res) => {
       sample_rate_hz: unwrap(fields.sample_rate_hz),
       num_samples: unwrap(fields.num_samples),
       data: unwrap(fields.data),
+      calibration: unwrap(fields.calibration),
     };
 
     res.json(result);
   } catch (err) {
     console.error('Firestore proxy error:', err);
     res.status(500).json({ error: 'Failed to fetch recording' });
+  }
+});
+
+// List all recordings (id, label, label_name only)
+app.get('/api/recordings', async (req, res) => {
+  const projectId = process.env.PROJECT_ID;
+  if (!projectId) return res.status(500).json({ error: 'PROJECT_ID not configured' });
+
+  const url = `https://firestore.googleapis.com/v1/projects/${projectId}/databases/(default)/documents/recordings`;
+
+  try {
+    const response = await fetch(url);
+    if (!response.ok) {
+      return res.status(response.status).json({ error: `Firestore returned ${response.status}` });
+    }
+
+    const body = await response.json();
+    const docs = body.documents || [];
+
+    const recordings = docs.map((doc) => {
+      const fields = doc.fields || {};
+      const id = doc.name.split('/').pop();
+      const label = fields.label
+        ? (fields.label.integerValue != null ? Number(fields.label.integerValue) : fields.label.doubleValue)
+        : null;
+      const label_name = fields.label_name ? fields.label_name.stringValue : '';
+      return { id, label, label_name };
+    });
+
+    res.json(recordings);
+  } catch (err) {
+    console.error('Firestore list error:', err);
+    res.status(500).json({ error: 'Failed to list recordings' });
   }
 });
 

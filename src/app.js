@@ -5,17 +5,10 @@ async function init() {
   const { db } = await initFirebase();
 
   // Get DOM elements
-  const accelX = document.getElementById('accel-x');
-  const accelY = document.getElementById('accel-y');
-  const accelZ = document.getElementById('accel-z');
-  const gyroX = document.getElementById('gyro-x');
-  const gyroY = document.getElementById('gyro-y');
-  const gyroZ = document.getElementById('gyro-z');
   const countdownValue = document.getElementById('countdown-value');
   const progressBar = document.getElementById('progress-bar');
   const progressValue = document.getElementById('progress-value');
   const errorValue = document.getElementById('error-value');
-  
   const connectionStatus = document.getElementById('connection-status');
 
   // Connection status
@@ -23,6 +16,7 @@ async function init() {
     if (snap.val() === true) {
       connectionStatus.textContent = 'Connected';
       connectionStatus.className = 'connected';
+      loadRecordingsList();
     } else {
       connectionStatus.textContent = 'Disconnected';
       connectionStatus.className = 'disconnected';
@@ -36,36 +30,107 @@ async function init() {
     return typeof val === 'number' ? val.toFixed(2) : val;
   }
 
-  // Read Accelerometer
-  onValue(ref(db, 'Sensor/accel'), (snap) => {
-    const val = snap.val();
-    if (val !== null) {
-      accelX.textContent = fmt(val.x);
-      accelY.textContent = fmt(val.y);
-      accelZ.textContent = fmt(val.z);
-    }
-  }, (err) => {
-    console.error('Accel listener error:', err);
-  });
+  // Calibration bias display
+  const calFields = ['bias_ax', 'bias_ay', 'bias_az', 'bias_gx', 'bias_gy', 'bias_gz'];
+  const calEls = Object.fromEntries(
+    calFields.map((f) => [f, document.getElementById(`cal-${f.replace('_', '-')}`)])
+  );
 
-  // Read Gyroscope
-  onValue(ref(db, 'Sensor/gyro'), (snap) => {
-    const val = snap.val();
-    if (val !== null) {
-      gyroX.textContent = fmt(val.x);
-      gyroY.textContent = fmt(val.y);
-      gyroZ.textContent = fmt(val.z);
-    }
-  }, (err) => {
-    console.error('Gyro listener error:', err);
-  });
+  function updateBiases(data) {
+    const cal = data.calibration || {};
+    calFields.forEach((f) => {
+      if (calEls[f]) calEls[f].textContent = cal[f] != null ? fmt(cal[f]) : '--';
+    });
+  }
 
-  // Recording chart
+  // Recordings list
+  const recordingsList = document.getElementById('recordings-list');
   const graphCard = document.getElementById('graph-card');
   const graphMeta = document.getElementById('graph-meta');
   const chartCanvas = document.getElementById('recording-chart');
   let recordingChart = null;
   let lastRecordingId = null;
+
+  async function loadRecordingsList() {
+    try {
+      const res = await fetch('/api/recordings');
+      const recordings = await res.json();
+      recordingsList.innerHTML = '';
+      recordings.forEach((rec) => {
+        const row = document.createElement('div');
+        row.className = 'recording-row';
+        row.dataset.id = rec.id;
+
+        const label = document.createElement('span');
+        label.textContent = `${rec.label_name} (${rec.label})`;
+        row.appendChild(label);
+
+        const menuBtn = document.createElement('button');
+        menuBtn.className = 'menu-btn';
+        menuBtn.textContent = '\u22EE';
+        menuBtn.addEventListener('click', (e) => {
+          e.stopPropagation();
+          document.querySelectorAll('.menu-dropdown.open').forEach((d) => {
+            if (d !== dropdown) d.classList.remove('open');
+          });
+          dropdown.classList.toggle('open');
+        });
+        row.appendChild(menuBtn);
+
+        const dropdown = document.createElement('div');
+        dropdown.className = 'menu-dropdown';
+        const deleteBtn = document.createElement('button');
+        deleteBtn.textContent = 'Delete';
+        deleteBtn.addEventListener('click', async (e) => {
+          e.stopPropagation();
+          try {
+            await fetch(`/api/recordings/${rec.id}`, { method: 'DELETE' });
+            const wasActive = row.classList.contains('active');
+            await loadRecordingsList();
+            if (wasActive) {
+              graphCard.style.display = 'none';
+              if (recordingChart) { recordingChart.destroy(); recordingChart = null; }
+            }
+          } catch (err) {
+            console.error('Delete failed:', err);
+          }
+        });
+        dropdown.appendChild(deleteBtn);
+        row.appendChild(dropdown);
+
+        recordingsList.appendChild(row);
+      });
+
+      // Update calibration biases from the latest recording
+      if (recordings.length > 0) {
+        const latest = recordings[recordings.length - 1];
+        const recRes = await fetch(`/api/recordings/${latest.id}`);
+        const recData = await recRes.json();
+        updateBiases(recData);
+      }
+    } catch (err) {
+      console.error('Failed to load recordings list:', err);
+    }
+  }
+
+  recordingsList.addEventListener('click', async (e) => {
+    const row = e.target.closest('.recording-row');
+    if (!row) return;
+    recordingsList.querySelectorAll('.recording-row').forEach((r) => r.classList.remove('active'));
+    row.classList.add('active');
+    try {
+      const res = await fetch(`/api/recordings/${row.dataset.id}`);
+      const data = await res.json();
+      if (data && data.data) renderRecordingChart(data);
+    } catch (err) {
+      console.error('Recording fetch error:', err);
+    }
+  });
+
+  // Close any open menu dropdown when clicking outside
+  document.addEventListener('click', () => {
+    document.querySelectorAll('.menu-dropdown.open').forEach((d) => d.classList.remove('open'));
+  });
 
   function renderRecordingChart(data) {
     graphCard.style.display = '';
@@ -164,6 +229,7 @@ async function init() {
           .then((r) => r.json())
           .then((data) => {
             if (data && data.data) renderRecordingChart(data);
+            updateBiases(data);
           })
           .catch((err) => console.error('Recording fetch error:', err));
       }
@@ -191,7 +257,7 @@ async function init() {
     console.error('Device status listener error:', err);
   });
 
-  // Button click → send command to RTDB
+  // Button click ; send command to RTDB
   btnGrid.addEventListener('click', (e) => {
     const btn = e.target.closest('button');
     if (!btn || btn.disabled) return;

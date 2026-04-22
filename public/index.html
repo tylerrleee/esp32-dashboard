@@ -10,26 +10,20 @@
 </head>
 <body>
   <header>
-    <h1>ESP32 Firebase Dashboard</h1>
-    <div id="connection-status" class="disconnected">Connecting...</div>
+    <h1>KatEye MPU6050 Collect </h1>
+    <div id="connection-status" class="disconnected">Connecting LOL...</div>
   </header>
 
   <main class="dashboard">
     <div class="card">
-      <h2>IMU Sensor</h2>
-      <div class="imu-data">
-        <div class="imu-section">
-          <h3>Accelerometer</h3>
-          <div class="imu-row"><span class="imu-axis">X</span> <strong id="accel-x">--</strong></div>
-          <div class="imu-row"><span class="imu-axis">Y</span> <strong id="accel-y">--</strong></div>
-          <div class="imu-row"><span class="imu-axis">Z</span> <strong id="accel-z">--</strong></div>
-        </div>
-        <div class="imu-section">
-          <h3>Gyroscope</h3>
-          <div class="imu-row"><span class="imu-axis">X</span> <strong id="gyro-x">--</strong></div>
-          <div class="imu-row"><span class="imu-axis">Y</span> <strong id="gyro-y">--</strong></div>
-          <div class="imu-row"><span class="imu-axis">Z</span> <strong id="gyro-z">--</strong></div>
-        </div>
+      <h2>Calibration</h2>
+      <div class="calibration-data">
+        <div class="cal-row"><span>bias_ax</span> <strong id="cal-bias-ax">--</strong></div>
+        <div class="cal-row"><span>bias_ay</span> <strong id="cal-bias-ay">--</strong></div>
+        <div class="cal-row"><span>bias_az</span> <strong id="cal-bias-az">--</strong></div>
+        <div class="cal-row"><span>bias_gx</span> <strong id="cal-bias-gx">--</strong></div>
+        <div class="cal-row"><span>bias_gy</span> <strong id="cal-bias-gy">--</strong></div>
+        <div class="cal-row"><span>bias_gz</span> <strong id="cal-bias-gz">--</strong></div>
       </div>
     </div>
 
@@ -50,24 +44,8 @@
     </div>
 
     <div class="card">
-      <h2>Device Status</h2>
-      <div class="device-stats">
-        <div class="stat-item">
-          <span class="stat-label">Countdown</span>
-          <span id="countdown-value" class="stat-value">--</span>
-        </div>
-        <div class="stat-item">
-          <span class="stat-label">Progress</span>
-          <div class="progress-bar-container">
-            <div id="progress-bar" class="progress-bar"></div>
-          </div>
-          <span id="progress-value" class="stat-value">0 / 560</span>
-        </div>
-        <div class="stat-item">
-          <span class="stat-label">Last Error</span>
-          <span id="error-value" class="stat-value error-text">--</span>
-        </div>
-      </div>
+      <h2>Recordings</h2>
+      <div id="recordings-list" class="recordings-scroll"></div>
     </div>
 
 
