@@ -10,14 +10,6 @@ A labeled IMU data collection tool for driving attitude classification. An ESP32
 
 ![ESP32 + MPU6050](media/DATACOLLECTPIC.jpeg)
 
-## Features
-
-- **Calibration display** — shows accelerometer and gyroscope bias values (ax, ay, az, gx, gy, gz)
-- **9 labeled collection buttons** — Accelerate, Aggressive Accelerate, Aggressive Brake, Aggressive Left, Aggressive Right, Brake, Idling, Left, Right
-- **Real-time device status** — countdown timer, recording progress (0–560 samples), error display
-- **Recordings list** — browse all saved recordings with delete support
-- **Chart.js dual-axis visualization** — plots accel (m/s²) and gyro (rad/s) on separate Y-axes over time
-- **Live Firebase sync** — RTDB listeners update the dashboard as the ESP32 records
 
 ## Data Architecture
 
@@ -26,14 +18,14 @@ A labeled IMU data collection tool for driving attitude classification. An ESP32
 ```
 datacollect/devices/kateye-collector-01/
 ├── command/
-│   ├── trigger       (bool)    ← Dashboard writes
-│   ├── label         (int)     ← Dashboard writes
-│   └── label_name    (string)  ← Dashboard writes
-├── status            (string)  ← ESP32 writes (idle/countdown/recording/uploading/done/error)
-├── countdown_remaining (int)   ← ESP32 writes
-├── progress          (int)     ← ESP32 writes (0–560)
-├── last_error        (string)  ← ESP32 writes
-└── last_recording_id (string)  ← ESP32 writes
+│   ├── trigger       (bool)     Dashboard writes
+│   ├── label         (int)      Dashboard writes
+│   └── label_name    (string)   Dashboard writes
+├── status            (string)   ESP32 writes (idle/countdown/recording/uploading/done/error)
+├── countdown_remaining (int)    ESP32 writes
+├── progress          (int)      ESP32 writes (0–560)
+├── last_error        (string)   ESP32 writes
+└── last_recording_id (string)   ESP32 writes
 ```
 
 ### Firestore (recording storage)
